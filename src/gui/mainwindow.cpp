@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "convert.h"
 
+#include <QApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QDragEnterEvent>
@@ -11,7 +12,10 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMimeData>
+#include <QPalette>
 #include <QSettings>
+#include <QStyle>
+#include <QStyleFactory>
 #include <QThreadPool>
 #include <QVBoxLayout>
 
@@ -24,6 +28,77 @@ QString tr2(const char *zh, const char *en)
     return g_lang == QLatin1String("en") ? QString::fromUtf8(en)
                                          : QString::fromUtf8(zh);
 }
+
+/* ---------------- light / dark theme ----------------
+ *
+ * The platform style is left untouched for the light theme; dark switches to
+ * Fusion, whose palette is honoured consistently on every platform (the native
+ * Windows style ignores most palette entries).  The style and palette the app
+ * started with are captured once so switching back is exact.
+ */
+
+namespace {
+
+QString g_defaultStyleName;
+QPalette g_defaultPalette;
+bool g_defaultsCaptured = false;
+
+void captureStyleDefaults()
+{
+    if (g_defaultsCaptured)
+        return;
+    g_defaultsCaptured = true;
+    if (QStyle *s = qApp->style())
+        g_defaultStyleName = s->objectName();
+    g_defaultPalette = qApp->palette();
+}
+
+void applyTheme(bool dark)
+{
+    captureStyleDefaults();
+
+    if (!dark) {
+        if (!g_defaultStyleName.isEmpty()) {
+            if (QStyle *s = QStyleFactory::create(g_defaultStyleName))
+                qApp->setStyle(s);
+        }
+        qApp->setPalette(g_defaultPalette);
+        return;
+    }
+
+    qApp->setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+
+    const QColor window(53, 53, 53);
+    const QColor base(37, 37, 37);
+    const QColor alt(48, 48, 48);
+    const QColor text(224, 224, 224);
+    const QColor dim(130, 130, 130);
+    const QColor accent(42, 130, 218);
+
+    QPalette p;
+    p.setColor(QPalette::Window, window);
+    p.setColor(QPalette::WindowText, text);
+    p.setColor(QPalette::Base, base);
+    p.setColor(QPalette::AlternateBase, alt);
+    p.setColor(QPalette::ToolTipBase, base);
+    p.setColor(QPalette::ToolTipText, text);
+    p.setColor(QPalette::Text, text);
+    p.setColor(QPalette::Button, window);
+    p.setColor(QPalette::ButtonText, text);
+    p.setColor(QPalette::BrightText, Qt::white);
+    p.setColor(QPalette::Link, accent);
+    p.setColor(QPalette::Highlight, accent);
+    p.setColor(QPalette::HighlightedText, Qt::black);
+    p.setColor(QPalette::PlaceholderText, dim);
+    p.setColor(QPalette::Disabled, QPalette::Text, dim);
+    p.setColor(QPalette::Disabled, QPalette::WindowText, dim);
+    p.setColor(QPalette::Disabled, QPalette::ButtonText, dim);
+    p.setColor(QPalette::Disabled, QPalette::Highlight, alt);
+    p.setColor(QPalette::Disabled, QPalette::HighlightedText, dim);
+    qApp->setPalette(p);
+}
+
+} // namespace
 
 /* ---------------- DropPathEdit ---------------- */
 
@@ -127,6 +202,9 @@ MainWindow::MainWindow(QWidget *parent)
     if (g_lang != QLatin1String("en") && g_lang != QLatin1String("zh"))
         g_lang = QStringLiteral("zh");
 
+    themeDark_ = settings.value("theme", "light").toString() == QLatin1String("dark");
+    applyTheme(themeDark_);
+
     setAcceptDrops(true);
     resize(720, 560);
 
@@ -150,8 +228,18 @@ MainWindow::MainWindow(QWidget *parent)
     fileBtns->addWidget(btnClear_);
     fileBtns->addStretch();
 
+    /* theme selector (persisted), left of the language selector */
+    labelTheme_ = new QLabel;
+    themeBox_ = new QComboBox;
+    themeBox_->addItem(tr2("浅色", "Light"), 0);
+    themeBox_->addItem(tr2("深色", "Dark"), 1);
+    themeBox_->setCurrentIndex(themeDark_ ? 1 : 0);
+    fileBtns->addWidget(labelTheme_);
+    fileBtns->addWidget(themeBox_);
+
     /* language selector (persisted) */
-    fileBtns->addWidget(new QLabel(tr2("语言：", "Language:")));
+    labelLang_ = new QLabel;
+    fileBtns->addWidget(labelLang_);
     auto *langBox = new QComboBox;
     langBox->addItem(QStringLiteral("中文"), QStringLiteral("zh"));
     langBox->addItem(QStringLiteral("English"), QStringLiteral("en"));
@@ -233,6 +321,12 @@ MainWindow::MainWindow(QWidget *parent)
         applyTexts();
     });
 
+    connect(themeBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        themeDark_ = (index == 1);
+        applyTheme(themeDark_);
+        QSettings s;
+        s.setValue("theme", themeDark_ ? "dark" : "light");
+    });
     applyTexts();
 }
 
@@ -246,17 +340,39 @@ void MainWindow::applyTexts()
     btnAdd_->setText(tr2("添加文件…", "Add files…"));
     btnAddDir_->setText(tr2("添加文件夹…", "Add folder…"));
     btnClear_->setText(tr2("清空列表", "Clear list"));
+    labelTheme_->setText(tr2("主题：", "Theme:"));
+    labelLang_->setText(tr2("语言：", "Language:"));
+    {
+        int cur = themeBox_->currentIndex();
+        themeBox_->blockSignals(true);
+        themeBox_->clear();
+        themeBox_->addItem(tr2("浅色", "Light"), 0);
+        themeBox_->addItem(tr2("深色", "Dark"), 1);
+        themeBox_->setCurrentIndex(cur < 0 ? (themeDark_ ? 1 : 0) : cur);
+        themeBox_->blockSignals(false);
+    }
     labelLevel_->setText(tr2("努力程度(1-10):", "Effort (1-10):"));
     modularBox_->setText(tr2("Modular 模式（预测器与数学变换全自动选择）",
                              "Modular mode (automatic predictor & transform selection)"));
     labelThreads_->setText(tr2("线程数:", "Threads:"));
-    strictDepthBox_->setText(tr2("严格匹配源图位深（不勾选则自动优化：去无用alpha/灰度检测）",
-                                 "Match source bit depth strictly (uncheck to auto-optimize: drop useless alpha / gray detection)"));
-    keepMetaBox_->setText(tr2("保留元数据（EXIF/ICC/DPI/文本）",
-                              "Keep metadata (EXIF/ICC/DPI/text)"));
-    keepTimeBox_->setText(tr2("输出文件时间戳与输入一致", "Keep input timestamps on output"));
-    overwriteBox_->setText(tr2("覆盖原文件（输出与输入相同时原地覆盖；同目录的非JXL转换成功后删除原文件）",
-                               "Overwrite originals (in-place when output==input; same-folder non-JXL sources are deleted after conversion)"));
+    strictDepthBox_->setText(tr2("严格匹配源图位深", "Strict bit depth"));
+    strictDepthBox_->setToolTip(tr2(
+        "按源图保留颜色通道与位深；取消勾选则自动优化（去无用 alpha、灰度检测）",
+        "Keep the source color model and bit depth; uncheck to auto-optimize "
+        "(drop useless alpha, detect grayscale)"));
+    keepMetaBox_->setText(tr2("保留元数据", "Keep metadata"));
+    keepMetaBox_->setToolTip(tr2(
+        "把源文件的 EXIF / ICC / DPI / 文本元数据写入 .jxl",
+        "Carry the source EXIF / ICC / DPI / text metadata into the .jxl"));
+    keepTimeBox_->setText(tr2("时间戳与输入一致", "Keep timestamps"));
+    keepTimeBox_->setToolTip(tr2(
+        "输出文件的创建时间与修改时间与输入保持一致",
+        "Give the output the same creation and modification times as the input"));
+    overwriteBox_->setText(tr2("覆盖原文件", "Overwrite originals"));
+    overwriteBox_->setToolTip(tr2(
+        "输出与输入相同时允许原地覆盖；同目录下的非 JXL 文件转换成功后删除原文件",
+        "Allow in-place overwriting when the output equals the input; delete a "
+        "same-folder non-JXL source once its conversion succeeded"));
     labelOutDir_->setText(tr2("输出目录（留空 = JXL原地/同名生成）:", "Output directory (empty = in-place / next to input):"));
     outDirEdit_->setPlaceholderText(tr2("可拖拽文件夹到此框作为输出目录",
                                         "Drop a folder here to use it as the output directory"));

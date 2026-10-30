@@ -78,7 +78,11 @@ private:
     QLabel *labelThreads_;
     QLabel *labelOutDir_;
     QPushButton *btnBrowse_;
+    QLabel *labelTheme_;
+    QLabel *labelLang_;
+    QComboBox *themeBox_;
 
+    bool themeDark_;
     int pending_;
     int failures_;
 };

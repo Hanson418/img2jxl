@@ -649,16 +649,11 @@ static uint8_t pal_gif_b(int i) { static const uint8_t v[4] = {0,0,255,30};  ret
 
 static uint64_t file_time_stamp(const char *path, int create)
 {
-    uint8_t c[16] = {0}, m[16] = {0};
-    if (get_file_times(path, c, m) != 0)
+    img_timeblob_t c, m;
+    if (get_file_times(path, &c, &m) != 0)
         return 0;
-    if (create) {
-        uint64_t v;
-        memcpy(&v, c, 8);
-        return v;
-    }
     uint64_t v;
-    memcpy(&v, m, 8);
+    memcpy(&v, create ? c.bytes : m.bytes, 8);
     return v;
 }
 
@@ -1060,6 +1055,74 @@ pgm_done:;
         free(jx);
     }
 
+    /* --- end-to-end through img2jxl_convert (the CLI/GUI path) ---
+     * This is the only test that walks the real entry point, including the
+     * timestamp copy that used to overflow an 8-byte stack buffer. */
+    printf("end-to-end img2jxl_convert (timestamps included):\n");
+    {
+        FILE *f = img_fopen_write("testout/e2e_in.bmp");
+        int wok = 0;
+        if (f) {
+            /* reuse the bmp24 generator, then mark it with an old timestamp */
+            fclose(f);
+            wok = gen_bmp24("testout/e2e_in.bmp", 21, 9) == 0;
+        }
+        CHECK(wok, "generate end-to-end source bmp");
+
+        const uint64_t old_v = 130000000000000000ULL;
+        img_timeblob_t c, m;
+        memset(&c, 0, sizeof(c));
+        memset(&m, 0, sizeof(m));
+        memcpy(c.bytes, &old_v, 8);
+        memcpy(m.bytes, &old_v, 8);
+        set_file_times("testout/e2e_in.bmp", &c, &m);
+        uint64_t src_c = file_time_stamp("testout/e2e_in.bmp", 1);
+        uint64_t src_m = file_time_stamp("testout/e2e_in.bmp", 0);
+
+        jxl_opts_t eo = opts;
+        eo.effort = 3;
+        img2jxl_result_t res;
+        int rc = img2jxl_convert("testout/e2e_in.bmp", "testout/e2e_out.jxl",
+                                 &eo, 1, &res);
+        CHECK(rc == 0 && res.ok, "img2jxl_convert succeeds");
+        if (rc == 0 && res.ok) {
+            CHECK(res.out_w == 21 && res.out_h == 9 && res.out_depth == 8 &&
+                  res.out_frames == 1, "convert fills the result fields");
+            img_image_t got;
+            int ch = read_jxl_img("testout/e2e_out.jxl", &got);
+            CHECK(ch == 3, "the converted file decodes");
+            if (ch == 3) {
+                img_image_t srcimg;
+                FILE *sf = img_fopen_read("testout/e2e_in.bmp");
+                int oks = sf && bmp_decode(sf, &srcimg, err, sizeof(err)) == 0;
+                if (sf) fclose(sf);
+                if (oks) {
+                    int ech, eis16;
+                    uint8_t *exp = expected_pixels(&srcimg, &ech, &eis16);
+                    size_t n = (size_t)srcimg.width * srcimg.height * (size_t)ech;
+                    CHECK(compare_buf(got.data, exp, n) < 0,
+                          "pixels identical through the real entry point");
+                    free(exp);
+                    img_free(&srcimg);
+                }
+                img_free(&got);
+            }
+            CHECK(file_time_stamp("testout/e2e_out.jxl", 0) == src_m && src_m != 0,
+                  "modification time carried through img2jxl_convert");
+            CHECK(file_time_stamp("testout/e2e_out.jxl", 1) == src_c && src_c != 0,
+                  "creation time carried through img2jxl_convert");
+        }
+
+        /* keep_time = 0 must leave the output's own timestamps alone */
+        img2jxl_result_t res2;
+        int rc2 = img2jxl_convert("testout/e2e_in.bmp", "testout/e2e_out2.jxl",
+                                  &eo, 0, &res2);
+        CHECK(rc2 == 0 && res2.ok, "img2jxl_convert without timestamps");
+        if (rc2 == 0)
+            CHECK(file_time_stamp("testout/e2e_out2.jxl", 0) != src_m,
+                  "keep_time=0 does not copy the source time");
+    }
+
     /* --- metadata carrying: DPI / ICC / Exif / text --- */
     printf("metadata carrying:\n");
     {
@@ -1260,10 +1323,12 @@ pgm_done:;
             /* raw payload 1e17: a very old timestamp on Windows (FILETIME),
              * harmless on POSIX where only mtime is applied */
             uint64_t old_v = 100000000000000000ULL;
-            uint8_t c[16] = {0}, m[16] = {0};
-            memcpy(c, &old_v, 8);
-            memcpy(m, &old_v, 8);
-            set_file_times("testout/ts_in.bin", c, m);
+            img_timeblob_t c, m;
+            memset(&c, 0, sizeof(c));
+            memset(&m, 0, sizeof(m));
+            memcpy(c.bytes, &old_v, 8);
+            memcpy(m.bytes, &old_v, 8);
+            set_file_times("testout/ts_in.bin", &c, &m);
         }
         CHECK(copy_file_times("testout/ts_in.bin", "testout/ts_out.bin") == 0, "copy_file_times");
         uint64_t c_in = file_time_stamp("testout/ts_in.bin", 1);

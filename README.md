@@ -205,8 +205,12 @@ libraries must be on `PATH`):
   `.jxl` (noted in the log). Outputs going elsewhere never delete anything.
 - The output-directory box accepts dropped folders (or a dropped file, which
   fills in its parent directory).
-- The interface language switches between 中文 and English in the top right,
-  applies immediately and is remembered (Chinese by default).
+- **Theme selector** (top right, left of the language selector): 浅色 / 深色.
+  Dark mode uses the Fusion style with a hand-tuned palette; light keeps the
+  native platform style. The choice applies immediately and is remembered
+  (default: light).
+- The interface language switches between 中文 and English next to the theme
+  selector, applies immediately and is remembered (Chinese by default).
 - **Convert** streams each file's result into the log.
 
 ## Tests

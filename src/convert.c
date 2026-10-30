@@ -122,7 +122,8 @@ static int read_whole(FILE *f, uint8_t **out, size_t *outlen,
 
 /* fill timing/size info and report success */
 static int finish_ok(img2jxl_result_t *result, const char *out_path,
-                     int have_times, const uint8_t *ctime, const uint8_t *mtime,
+                     int have_times, const img_timeblob_t *ctime,
+                     const img_timeblob_t *mtime,
                      double t0, unsigned long long in_size)
 {
     if (have_times)
@@ -151,8 +152,8 @@ int img2jxl_convert(const char *in_path, const char *out_path,
     double t0 = img_now_sec();
 
     /* save the source's times before any (possibly in-place) write */
-    uint8_t ctime[8] = {0}, mtime[8] = {0};
-    int have_times = keep_time && get_file_times(in_path, ctime, mtime) == 0;
+    img_timeblob_t ctime, mtime;
+    int have_times = keep_time && get_file_times(in_path, &ctime, &mtime) == 0;
     unsigned long long in_size = file_size(in_path);
 
     FILE *f = img_fopen_read(in_path);
@@ -179,7 +180,7 @@ int img2jxl_convert(const char *in_path, const char *out_path,
             fclose(f);
             if (rc != 0)
                 return -1;
-            return finish_ok(result, out_path, have_times, ctime, mtime,
+            return finish_ok(result, out_path, have_times, &ctime, &mtime,
                              t0, in_size);
         }
         /* single-frame GIF (or animation decode failure): rewind and use
@@ -235,7 +236,7 @@ int img2jxl_convert(const char *in_path, const char *out_path,
             if (rc != 0)
                 return -1;
         }
-        return finish_ok(result, out_path, have_times, ctime, mtime, t0, in_size);
+        return finish_ok(result, out_path, have_times, &ctime, &mtime, t0, in_size);
     }
 
     /* ---------------- .jxl input: re-encode with current settings ------- */
@@ -294,7 +295,7 @@ int img2jxl_convert(const char *in_path, const char *out_path,
         img_free(&img);
         if (rc != 0)
             return -1;
-        return finish_ok(result, out_path, have_times, ctime, mtime, t0, in_size);
+        return finish_ok(result, out_path, have_times, &ctime, &mtime, t0, in_size);
     }
 
     /* ---------------- everything else: decode pixels ---------------- */
@@ -368,5 +369,5 @@ int img2jxl_convert(const char *in_path, const char *out_path,
     if (rc != 0)
         return -1;
 
-    return finish_ok(result, out_path, have_times, ctime, mtime, t0, in_size);
+    return finish_ok(result, out_path, have_times, &ctime, &mtime, t0, in_size);
 }
