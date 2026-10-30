@@ -23,6 +23,10 @@ skcms），以及 libpng、libjpeg-turbo、giflib、libwebp、libtiff。所有�
   预测器、调色板变换、RCT 与 squeeze 等变换。除了努力程度，无需调节任何参数。
 - **保留元数据**：ICC、Exif、XMP、文本块与物理分辨率（DPI）都会随源文件带过来——转换后的照片仍保留拍摄信息，PNG 转换后仍保留 DPI。加 `--no-metadata` 可剥离。
 - **适合批处理**：文件夹递归扫描，多文件并行转换吃满所有核心，输出时间戳与输入一致。
+- **现成安装包**：每个版本同时提供 Windows `.zip`、Linux `.tar.gz` **与 `.deb`**、
+  macOS `.tar.gz` **与 `.dmg`** —— 均由 GitHub Actions 在三平台构建并跑过自测试。
+  每个包都是自包含的：Windows 包带 MinGW 运行库，Linux 包带 Qt 及其自身依赖，
+  macOS 由 `macdeployqt` 打全 dylib；Linux 上唯一保留的系统要求是 glibc。
 
 ## 支持的格式
 

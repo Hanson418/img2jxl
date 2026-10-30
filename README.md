@@ -31,6 +31,12 @@ libtiff — every dependency is bundled, so the project builds offline.
   data, a converted PNG keeps its DPI. `--no-metadata` strips it.
 - **Batch-friendly**: folders are scanned recursively, files convert in
   parallel on all cores, and output timestamps match the input's.
+- **Prebuilt packages**: each release ships a Windows `.zip`, a Linux
+  `.tar.gz` **and `.deb`**, and a macOS `.tar.gz` **and `.dmg`** — all built and
+  self-tested by GitHub Actions on the three platforms. Every package is
+  self-contained: the Windows zip carries the MinGW runtime, the Linux
+  packages carry Qt plus its own dependencies, and `macdeployqt` bundles the
+  macOS dylibs. On Linux the only remaining system requirement is glibc.
 
 ## Supported formats
 
